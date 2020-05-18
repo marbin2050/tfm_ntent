@@ -9,7 +9,7 @@ import evaluate
 
 
 # COMMAND LINE ARGUMENTS
-fold_file_1 = "input_files/train_sample.txt"
+fold_file_1 = "input_files/train.txt"
 column_indexes = [0, 1, 12, 13, 14, 15, 16, 127, 128, 129, 130, 131, 132, 133, 134, 136, 137]
 column_names = ['relevance', 'qid', 's_length_body', 's_length_anchor', 's_length_title', 's_length_url',
                 's_length_document', 'n_slash_url', 'length_url', 'inlink_number', 'outlink_number',
