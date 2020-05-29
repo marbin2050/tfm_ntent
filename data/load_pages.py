@@ -4,6 +4,7 @@ import gzip
 import json
 from pympler import asizeof
 import pandas as pd
+import re
 
 
 def load_pages(file):
@@ -11,6 +12,7 @@ def load_pages(file):
     views = []
     url_length = []
     title_length = []
+    text = []
     text_length = []
     text_sections = []
     text_infoboxes = []
@@ -40,7 +42,10 @@ def load_pages(file):
             url_length.append(len(file["full_url"]))
             title_length.append(len(file["title"]))
 
-            text_length.append(len(file["text"]))
+            # take a filtered list of words from text
+            text.append(re.findall(r'([A-Za-z][a-z]{2,9})', file["text"]["text"]))
+
+            text_length.append(len(file["text"]["text"]))
             if file["text"]["sections"]:
                 text_sections.append(len(file["text"]["sections"]))
             else:
@@ -90,6 +95,7 @@ def load_pages(file):
             'views': pd.Series(views),
             "url_length": pd.Series(url_length),
             "title_length": pd.Series(title_length),
+            "text": pd.Series(text),
             "text_length": text_length,
             "text_sections": text_sections,
             "text_infoboxes": text_infoboxes,

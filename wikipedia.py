@@ -17,4 +17,8 @@ if __name__ == '__main__':
     # STEP 3: DATA SUMMARY OF PAGES LOADED
     data_summary(data)
 
-
+    # TODO: Graph for zip law crashes when more than 1-2K bars
+    # TODO: Add the expected zip law and maybe delete outliers (highest ones)
+    # TODO: Add wordcloud by percentiles
+    # TODO: Check how many pages 'have' more than one page type
+    # TODO: show message alerting if any of the variables have only null/zero values
