@@ -1,14 +1,10 @@
 __author__ = '{Alfonso Aguado Bustillo}'
 
 import matplotlib.pyplot as plt
-import pandas as pd
 import seaborn as sn
 from matplotlib import pyplot
 import numpy as np
-
-
-def normalize(val, max, min):
-    return (val - min) / (max - min) * 100
+from matplotlib import pylab
 
 
 def check_for_nulls(data):
@@ -19,79 +15,109 @@ def check_for_nulls(data):
             print(col + " only have zero values")
 
 
-def get_pages_type(data):
+def h_approx(n):
+    """
+    Returns an approximate value of n-th harmonic number.
+    http://en.wikipedia.org/wiki/Harmonic_number
+    """
+    # Euler-Mascheroni constant
+    gamma = 0.57721566490153286060651209008240243104215933593992
+    return gamma + np.math.log(n) + 0.5 / n - 1. / (12 * n ** 2) + 1. / (120 * n ** 4)
 
-    ones1 = data["is_redirect"].loc[data.loc[:, "is_redirect"].isin([1])].count()
-    ones2 = data["is_category_page"].loc[data.loc[:, "is_category_page"].isin([1])].count()
-    ones3 = data["is_category_redirect"].loc[data.loc[:, "is_category_redirect"].isin([1])].count()
-    ones4 = data["is_talkpage"].loc[data.loc[:, "is_talkpage"].isin([1])].count()
-    ones5 = data["is_disambig"].loc[data.loc[:, "is_disambig"].isin([1])].count()
-    ones6 = data["is_filepage"].loc[data.loc[:, "is_filepage"].isin([1])].count()
-    ones7 = data["section"].loc[data.loc[:, "section"].isin([1])].count()
-    all_classes = {'is_redirect': ones1, 'is_category_page': ones2, 'is_category_redirect': ones3, 'is_talkpage': ones4,
-                   'is_disambig': ones5, 'is_filepage': ones6, 'section': ones7}
 
-    return all_classes
+def get_sub_types(data):
+
+    n_is_redirect = data["is_redirect"].loc[data.loc[:, "is_redirect"].isin([1])].count()
+    n_is_category_page = data["is_category_page"].loc[data.loc[:, "is_category_page"].isin([1])].count()
+    n_is_category_redirect = data["is_category_redirect"].loc[data.loc[:, "is_category_redirect"].isin([1])].count()
+    n_is_talkpage = data["is_talkpage"].loc[data.loc[:, "is_talkpage"].isin([1])].count()
+    n_is_disambig = data["is_disambig"].loc[data.loc[:, "is_disambig"].isin([1])].count()
+    n_is_filepage = data["is_filepage"].loc[data.loc[:, "is_filepage"].isin([1])].count()
+    n_section = data["section"].loc[data.loc[:, "section"].isin([1])].count()
+
+    sub_types = {'is_redirect': n_is_redirect, 'is_category_page': n_is_category_page,
+                 'is_category_redirect': n_is_category_redirect, 'is_talkpage': n_is_talkpage,
+                 'is_disambig': n_is_disambig, 'is_filepage': n_is_filepage, 'section': n_section}
+
+    return sub_types
 
 
 def show_pages_by_type(data, output_plots_path):
 
-    total = data.sum(1)[0]
-    n_columns = data.shape[1]  # number of bars
-    sub_types = data.values.tolist()[0]
+    sub_types = get_sub_types(data)
+    sub_types = list(sub_types.values())
+    n_sub_types = sum(sub_types)  # number of pages with subtype
+    sub_types.append(n_sub_types)
+    sub_types = sorted(sub_types, reverse=True)
+    total_pages = data.shape[0]
+    percentages = np.array(sub_types) / total_pages * 100  # % with respect to total pages (normal + subtype)
+    n_bars = len(sub_types)  # nº plot bars
 
-    # normalize to 0-100 range
-    sub_types_norm = []
-    for i in sub_types:
-        sub_types_norm.append(normalize(i, total, 0))
-    diff_norm = [100 - element for element in sub_types_norm]
-
-    indices = np.arange(n_columns)  # the x locations for the groups
+    ind_bars = np.arange(n_bars)  # the x bars
     bar_width = 0.6  # the width of the bars
 
     fig = plt.figure(figsize=(16, 16))
-    # two bars/rectangles at position of the x axis
-    p1 = plt.bar(indices, tuple(sub_types_norm), bar_width)
-    p2 = plt.bar(indices, tuple(diff_norm), bar_width, bottom=sub_types_norm)
+    # one bar per sub_type
+    bars = plt.bar(ind_bars, tuple(percentages), bar_width, color='rgbkymcy')
 
-    # needed for placing the % over the bars
-    for rectangle in p1:
+    # place the % labels on the bars
+    for rectangle, percentage in zip(bars, percentages):
         width = rectangle.get_width()
         height = rectangle.get_height()
-        plt.text(rectangle.get_x() + width/5., rectangle.get_y() + height/1.5, str(round(height)) + "%", fontsize=18,
-                 color='white', weight='bold')
+        plt.text(rectangle.get_x() + width/5., rectangle.get_y() + height/1.5, str(round(percentage, 2)) + "%",
+                 fontsize=18, color='black', weight='bold')
 
     plt.ylabel('% of pages')
-    plt.title('Pages by type')
-    plt.xticks(indices, ('is_redirect', 'is_category_page', 'is_category_redirect',
-                         'is_talkpage', 'is_disambig', 'is_filepage', 'section'))
-    plt.legend((p1[0], p2[0]), ('Type', 'Total'))
+    plt.title('Pages by subtype')
+    plt.xticks(ind_bars, ('is_redirect', 'is_category_page', 'is_category_redirect', 'is_talkpage',
+                          'is_disambig', 'is_filepage', 'section', 'any subtype'))
 
-    fig.savefig(output_plots_path + 'page_type_ratios.png', dpi=300, bbox_inches='tight')
+    fig.savefig(output_plots_path + 'page_subtype_ratios.png', dpi=300, bbox_inches='tight')
     pyplot.close(fig)
 
 
-def word_frequency(data, output_plots_path):
-    frequency = {}
+def word_frequency(data):
+    word_freq = {}
 
     for index, value in data.items():
         for word in value:
-            count = frequency.get(word, 0)
-            frequency[word] = count + 1
+            count = word_freq.get(word, 0)
+            word_freq[word] = count + 1
 
     # show top 10 words
     # frequency = sorted(frequency.items(), key=lambda w: w[1], reverse=True)
-    #frequency = {key: value for key, value in frequency.items()}
+    # frequency = {key: value for key, value in frequency.items()}
+
+    return word_freq
+
+
+def zip_law(word_freq, output_plots_path):
 
     # plot zip law for top 1000
-    n_bars = np.arange(1000)
-    fig = plt.figure(figsize=(10, 8))
-    # s = 1
-    # expected_zipf = [term_freq_df.sort_values(by='total', ascending=False)['total'][0] / (i + 1) ** s for i in y_pos]
-    plt.bar(n_bars, sorted(frequency.values(), reverse=True)[0:1000], align='center', alpha=0.5)
-    # plt.plot(n_bars, expected_zipf, color='r', linestyle='--', linewidth=2, alpha=0.5)
-    plt.ylabel('Frequency')
-    plt.title('Top 1000 words in Wikipedia pages')
+    # n_bars = np.arange(1000)
+    # fig = plt.figure(figsize=(10, 8))
+    # # s = 1
+    # # expected_zipf = [term_freq_df.sort_values(by='total', ascending=False)['total'][0] / (i + 1) ** s for i in y_pos]
+    # plt.bar(n_bars, sorted(word_freq.values(), reverse=True)[0:1000], align='center', alpha=0.5)
+    # # plt.plot(n_bars, expected_zipf, color='r', linestyle='--', linewidth=2, alpha=0.5)
+    # plt.ylabel('Frequency')
+    # plt.title('Top 1000 words in Wikipedia pages')
+    # fig.savefig(output_plots_path + 'zip_law.png', dpi=300, bbox_inches='tight')
+    # pyplot.close(fig)
+
+    freqs = sorted(word_freq.values(), reverse=True)
+    n = len(freqs)
+    ranks = range(1, n + 1)  # x-axis: the ranks
+    # expected zipf
+    k = sum(freqs) / h_approx(n)
+    expected_freqs = [k / rank for rank in ranks]
+    fig = pylab.figure(figsize=(10, 8))
+    pylab.loglog(ranks, freqs, label='Zip Law Wikipedia')  # this plots frequency, not relative frequency
+    pylab.loglog(ranks, expected_freqs,  label='Zip Law Expected')
+    pylab.xlabel('log(rank)')
+    pylab.ylabel('log(freq)')
+    pylab.legend(loc='lower left')
+    pylab.title('Wikipedia pages')
     fig.savefig(output_plots_path + 'zip_law.png', dpi=300, bbox_inches='tight')
     pyplot.close(fig)
 
@@ -129,18 +155,17 @@ def data_summary(data):
     # STEP 4: STACKED BAR FOR BOOLEAN VARIABLES
     data_bool = data.select_dtypes(include=['boolean'])  # boolean data
     print(data_bool.head())
-    # plot
-    df = pd.DataFrame(get_pages_type(data_bool), index=[0])
     # plot each page type in a separate column
-    show_pages_by_type(df, output_plots_path)
-    # all page types in one stack
-    ax = df.plot.bar(stacked=True)
-    plt.figure()
-    fig = ax.get_figure()
-    fig.savefig(output_plots_path + 'page_type_ratios_one_bar.png', dpi=300, bbox_inches='tight')
-    pyplot.close(fig)
+    show_pages_by_type(data, output_plots_path)
 
-    # STEP 5: CORRELATION MATRIX
+    # STEP 5: PAGES WITH MORE THAN ONE SUBTYPE
+    sub_types = ['is_redirect', 'is_category_page', 'is_category_redirect', 'is_talkpage', 'is_disambig',
+                 'is_filepage', 'section']
+    n_pages = (data.loc[:, sub_types].sum(axis=1) > 1).value_counts()[1]
+    print("There are " + str(n_pages) + " pages with more than one subtype (" + str(round(n_pages/data.shape[0]*100))
+          + "% of total pages)")
+
+    # STEP 6: CORRELATION MATRIX
     corr_matrix = data_num.corr()
     # correlations sorted in descending order
     corr = corr_matrix.stack().abs()
@@ -155,5 +180,10 @@ def data_summary(data):
     fig.savefig(output_plots_path + 'num_vars_corr_matrix.png', dpi=300, bbox_inches='tight')
     pyplot.close(fig)
 
-    # STEP 6: WORD FREQUENCY
-    word_frequency(text_list, output_plots_path)
+    # STEP 7: WORD FREQUENCY
+    word_freq = word_frequency(text_list)
+
+    # ZIP LAW
+    zip_law(word_freq, output_plots_path)
+
+    # STEP 9: WORD CLOUDS
