@@ -255,9 +255,9 @@ class LightGBMRFECV:
         selector.fit(self.partitions.x_train, self.partitions.y_train)
 
         # select only the best features
-        x_test = self.partitions.x_test[:, selector.support_]
+        # x_test = self.partitions.x_test[:, selector.support_]
         # prediction
-        y_pred = selector.predict(x_test)
+        y_pred = selector.predict(self.partitions.x_test)
 
         # number of best features
         self.n_features = selector.n_features_

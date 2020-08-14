@@ -51,9 +51,9 @@ if __name__ == '__main__':
     # best_params = lgbm_tuning.best_params  # get best params
 
     # model training
-    lgbm = LightGBM(partitions, best_params=None)
-    y_pred, y_test = lgbm.execute()
-    evaluate.summary(y_pred, y_test, "LightGBM regression [views]")
+    # lgbm = LightGBM(partitions, best_params=None)
+    # y_pred, y_test = lgbm.execute()
+    # evaluate.summary(y_pred, y_test, "LightGBM regression [views]")
 
     # recursive feature elimination to identify the best features (explain more variance)
     lgbm_rfecv = LightGBMRFECV(partitions)
