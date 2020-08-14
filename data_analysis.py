@@ -8,6 +8,24 @@ from matplotlib import pylab
 
 
 def check_for_nulls(data):
+
+    # # empty values
+    # empty_values = (df['text'] == ' ').value_counts()
+    # print("\nEmpty values: " + str(empty_values))
+    # # null values
+    # null_values = df.isnull().sum().sum()
+    # print("\nNull values: " + str(null_values))
+    #
+    # df.loc[df['text'] == ' ', 'text'] = 'empty text'
+    # df['text'].fillna('empty text', inplace=True)
+    #
+    # empty_values = (df['text'] == ' ').value_counts()
+    # print("\nEmpty values: " + str(empty_values))
+    # # null values
+    # null_values = df.isnull().sum().sum()
+    # print("\nNull values: " + str(null_values))
+
+
     total = data.shape[0]
     for col in data.columns:
         zeroes = data[col].loc[data.loc[:, col].isin([0])].count()
@@ -93,18 +111,6 @@ def word_frequency(data):
 
 def zip_law(word_freq, output_plots_path):
 
-    # plot zip law for top 1000
-    # n_bars = np.arange(1000)
-    # fig = plt.figure(figsize=(10, 8))
-    # # s = 1
-    # # expected_zipf = [term_freq_df.sort_values(by='total', ascending=False)['total'][0] / (i + 1) ** s for i in y_pos]
-    # plt.bar(n_bars, sorted(word_freq.values(), reverse=True)[0:1000], align='center', alpha=0.5)
-    # # plt.plot(n_bars, expected_zipf, color='r', linestyle='--', linewidth=2, alpha=0.5)
-    # plt.ylabel('Frequency')
-    # plt.title('Top 1000 words in Wikipedia pages')
-    # fig.savefig(output_plots_path + 'zip_law.png', dpi=300, bbox_inches='tight')
-    # pyplot.close(fig)
-
     freqs = sorted(word_freq.values(), reverse=True)
     n = len(freqs)
     ranks = range(1, n + 1)  # x-axis: the ranks
@@ -145,8 +151,8 @@ def data_summary(data):
     # STEP 3: HISTOGRAMS FOR EACH NUMERICAL VARIABLE (DISTRIBUTIONS)
     data_num = data.select_dtypes(include=['int64'])  # numerical data
     print(data_num.head())
-    # plot
-    ax = data_num.hist(figsize=(20, 20), bins=50, xlabelsize=8, ylabelsize=8)
+
+    ax = data_num.hist(figsize=(20, 20), bins=200, xlabelsize=8, ylabelsize=8)
     plt.figure()
     fig = ax[0][0].get_figure()
     fig.savefig(output_plots_path + 'numerical_vars_distribution.png', dpi=300, bbox_inches='tight')

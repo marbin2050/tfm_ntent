@@ -1,64 +1,71 @@
 __author__ = '{Alfonso Aguado Bustillo}'
 
-import pandas as pd
-import documents
-import preprocessing
-import graph
-import learn_to_rank
+from feature_extraction import feature_extraction
+from feature_selection import feature_selection
+from load_pages import load_pages
+from data_analysis import data_summary
+from preprocessing import prepare_input_data
+from learning_model import Partitions, LightGBM, DummyRegressor, \
+    LinearRegressionBatch, LightGBMRFECV, LightGBMTuning
 import evaluate
 
+if __name__ == '__main__':
 
-# COMMAND LINE ARGUMENTS
-fold_file_1 = "input_files/train.txt"
-column_indexes = [0, 1, 12, 13, 14, 15, 16, 127, 128, 129, 130, 131, 132, 133, 134, 136, 137]
-column_names = ['relevance', 'qid', 's_length_body', 's_length_anchor', 's_length_title', 's_length_url',
-                's_length_document', 'n_slash_url', 'length_url', 'inlink_number', 'outlink_number',
-                'pagerank', 'siterank', 'quality_score', 'quality_score2', 'url_click_count', 'url_dwell_time']
-# LightGBM training parameters
-hyperparams = {'n_iter': 10000, 'learning_rate': 0.00003, 'boosting_type': 'gbdt', 'objective': 'regression',
-               'metric': 'mae', 'sub_feature': 0.5, 'num_leaves': 10, 'min_data': 50, 'max_depth': 10}
+    # STEP 1: REQUEST AND STORE WIKIPEDIA PAGES
+    # by executing the request_pages.py script
 
+    # STEP 2: LOAD WIKIPEDIA PAGES
+    pages_file = "data/output_files/_10000_top_docs_all.gz"
+    data = load_pages(pages_file)
 
-def main():
+    # STEP 3: DATA SUMMARY OF PAGES LOADED
+    # data_summary(data)
 
-    # STEP 1: GET DOCUMENTS FROM QUERIES
-    # load the queries file
-    all_queries = pd.read_csv(fold_file_1, sep=" ", header=None)
-    # pre-processing: format and extract values from queries
-    all_queries = preprocessing.extract_values(all_queries, column_names, column_indexes)
-    # create documents
-    docs_sorted = documents.get_documents(all_queries)
+    # STEP 4: PREPROCESSING TRAINING/TEST DATA
+    x, y_popularity, y_ranking = prepare_input_data(data)
 
-    # STEP 2: CREATE GRAPH
-    # get documents by query
-    docs_by_query = documents.get_documents_by_query(docs_sorted)
-    graph.create_graph(docs_by_query)
+    partitions = Partitions()
+    partitions.create_data_partitions(x, y_popularity)
 
-    # STEP 3: PREDICTION and EVALUATION
-    docs_sorted = docs_sorted.drop(['qid'], axis=1)  # drop not necessary qid column
-    # get input and output values for the algorithms
-    x = docs_sorted[column_names[2:]].values  # get input values
-    y = docs_sorted['relevance'].values  # get output values
-    partitions = learn_to_rank.Partitions()
-    partitions.create_data_partitions(x, y)  # train and test data for the algorithms
+    # STEP 4: FEATURE EXTRACTION
+    # feature_extraction(data)
 
-    # execute linear regression
-    lr = learn_to_rank.LinearRegression(partitions)
-    y_pred, y_test = lr.execute()  # run algorithm
-    evaluate.summary(y_pred, y_test)  # evaluate
+    # STEP 5: FEATURE SELECTION
+    # feature_selection(data)
 
-    # execute light gbm on regression
-    lgbm = learn_to_rank.LightGBM(partitions, hyperparams)
-    y_pred, y_test =  lgbm.execute()
-    evaluate.summary(y_pred, y_test)
+    # STEP 6: Dummy regressor
+    dr = DummyRegressor(partitions)
+    y_pred, y_test = dr.execute()
+    evaluate.summary(y_pred, y_test, "Dummy regressor [views]")
 
-    # execute lambda rank
-    lrank = learn_to_rank.LambdaRank(partitions)
-    y_pred, y_test = lrank.execute()
-    evaluate.summary(y_pred, y_test)
+    # STEP 7: Linear regression
+    lr = LinearRegressionBatch(partitions)
+    y_pred, y_test = lr.execute()
+    evaluate.summary(y_pred, y_test, "Linear Regression [views]")
 
+    # STEP 8: LGBM
+    # hyparameter tuning
+    # lgbm_tuning = LightGBMTuning(partitions)
+    # y_pred, y_test = lgbm_tuning.execute()
+    # evaluate.summary(y_pred, y_test, "LightGBM tuning regression [views]")
+    # best_params = lgbm_tuning.best_params  # get best params
 
-main()
+    # model training
+    lgbm = LightGBM(partitions, best_params=None)
+    y_pred, y_test = lgbm.execute()
+    evaluate.summary(y_pred, y_test, "LightGBM regression [views]")
 
+    # recursive feature elimination to identify the best features (explain more variance)
+    lgbm_rfecv = LightGBMRFECV(partitions)
+    y_pred, y_test = lgbm_rfecv.execute()
+    evaluate.summary(y_pred, y_test, "LightGBM RFECV regression [views]")
 
-
+    # TODO: Empty texts are setting to length 1
+    # TODO: Check what urls have text and title to null or empty
+    # TODO: Remove stopwords from bag-of-words?
+    # TODO: Finish check the null and empty values of data in data/preprocessing.py
+    # TODO: Regex applied tp text and title in load_pages.py could be increasing the running time
+    # TODO: Some texts are coming empty and I'm filling them with 'empty text' in preprocessing.py. Same for title
+    # TODO: Change histograms by scatterplots
+    # TODO: Add wordcloud by percentiles
+    # TODO: Show message alerting if any of the variables have only null/zero values

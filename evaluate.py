@@ -1,29 +1,23 @@
 __author__ = '{Alfonso Aguado Bustillo}'
 
 import pandas as pd
-from sklearn import metrics
 import numpy as np
-from sklearn.metrics import ndcg_score
 from scipy.stats import spearmanr
+from scipy.stats import pearsonr
+from sklearn.metrics import r2_score, mean_absolute_error, mean_squared_error
 
 
-def summary(y_pred, y_test):
+# def rfecv():
+#
 
-    # show first 25 results
-    print("\nSummary of results\n")
-    results = pd.DataFrame({'Actual': y_test, 'Predicted': y_pred})
-    print(results.head(25))
+
+def summary(y_pred, y_test, process_title):
 
     # evaluation
-    print("\nEvaluation results\n")
-    print('Mean Absolute Error (MAE):', metrics.mean_absolute_error(y_test, y_pred))
-    print('Mean Squared Error (MSE):', metrics.mean_squared_error(y_test, y_pred))
-    print('Root Mean Squared Error (RMSE):', np.sqrt(metrics.mean_squared_error(y_test, y_pred)))
+    print("\nEvaluation results: " + process_title + "\n")
+    print("R2 score ", r2_score(y_test, y_pred))
+    print('Mean Absolute Error (MAE):', mean_absolute_error(y_test, y_pred))
+    print('Mean Squared Error (MSE):', mean_squared_error(y_test, y_pred))
+    print('Root Mean Squared Error (RMSE):', np.sqrt(mean_squared_error(y_test, y_pred)))
     print('Spearman correlation:', spearmanr(y_test, y_pred))
-
-    # NDCG score
-    true_relevance = np.asarray([y_test])
-    scores = np.asarray([y_pred])
-    print('NDCG score: ', ndcg_score(true_relevance, scores))
-
-
+    print('Pearson correlation:', pearsonr(y_test.flatten(), y_pred))
