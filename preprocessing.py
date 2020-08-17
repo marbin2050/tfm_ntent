@@ -1,5 +1,7 @@
 from collections import defaultdict
 
+import nltk
+
 __author__ = '{Alfonso Aguado Bustillo}'
 
 from scipy.sparse import hstack, vstack
@@ -12,6 +14,7 @@ from sklearn.feature_extraction.text import CountVectorizer
 import re
 from itertools import combinations
 from igraph import *
+from nltk.tokenize.treebank import TreebankWordDetokenizer
 
 
 class BagOfWords:
@@ -43,6 +46,12 @@ class BagOfWords:
         return tokenized_text
 
     @staticmethod
+    def detokenize(word_list):
+        # detokenize words
+        sentence = TreebankWordDetokenizer().detokenize(word_list)
+        return sentence
+
+    @staticmethod
     def remove_stop_words(text):
         # load stop words
         stop_words = stopwords.words('english')
@@ -58,7 +67,10 @@ class BagOfWords:
     def remove_wikipedia_words(text):
         # load stop words
         wikipedia_words = ['url', 'infobox', 'imagename', 'imagesize', 'plainlist', 'mf', 'ref', 'http', 'row', 'cite',
-                           'urlstatus', 'accessdate', 'imagecaption', 'div', 'b', 'authorlink', 'vii', 'vi', 'viii']
+                           'urlstatus', 'accessdate', 'imagecaption', 'div', 'b', 'authorlink', 'vii', 'vi', 'viii',
+                           'date', 'name', 'title', 'image', 'short', 'description', 'caption', 'br', 'us', 'dmy',
+                           'archivedate', 'httpswebarchiveorgweb', 'archiveurl', 'p', 'c', 'df', 'th', 'type', 'px',
+                           'mdy', 'html', 'z', 'x', 'tg']
 
         # remove stop words
         new_text = []
@@ -87,21 +99,38 @@ class BagOfWords:
 
     def execute(self):
         original_texts_list = self.original_text_list
+        new_text_list = []
 
-        encoded_text_list = []
         for original_text in original_texts_list:
-            encoded_text = original_text
-            encoded_text = self.remove_white_spaces(encoded_text)
-            encoded_text = self.remove_punctuation(encoded_text)
-            encoded_text = self.remove_non_alphabetical(encoded_text)
-            encoded_text = self.tokenize(encoded_text)
-            encoded_text = self.remove_stop_words(encoded_text)
-            encoded_text = self.remove_wikipedia_words(encoded_text)
-            encoded_text = self.stemm_words(encoded_text)
-            encoded_text = self.encode_text(encoded_text)
-            encoded_text_list.append(encoded_text)
+            try:
+                text = original_text
+                text = self.remove_white_spaces(text)
+                text = self.remove_punctuation(text)
+                text = self.remove_non_alphabetical(text)
+                word_list = self.tokenize(text)
+                word_list = self.remove_stop_words(word_list)
+                word_list = self.remove_wikipedia_words(word_list)
+                new_text = self.detokenize(word_list)
+                new_text_list.append(new_text)
 
-        return encoded_text_list
+                # word_list = list(set(word_list))  # unique values
+                # # nltk.download('averaged_perceptron_tagger')
+                # word_list_tagged = pos_tag(word_list)
+                # # Filter words
+                # new_word_list_tagged = []
+                # for word, tag in word_list_tagged:
+                #     if tag in ['NN', 'NNS', 'NNP', 'NNPS']:
+                #         new_word_list_tagged.append(word)
+                # new_text = self.detokenize(new_word_list_tagged)
+                # new_text_list.append(new_text)
+
+            except Exception as e:
+                print("Exception: " + str(e))
+                print("No words found in intro.\n")
+                pass
+
+        bag_of_words = self.encode_text(new_text_list)
+        return bag_of_words
 
 
 def create_graph(pages_mapping):
@@ -137,8 +166,12 @@ def prepare_graph_features(data):
             edges.append((url, internal_link))
             vertices.append(internal_link)
 
+        # for back_link in row.back_links:
+        #     edges.append((back_link, url))
+        #     vertices.append(back_link)
+
     # create graph
-    graph = Graph()
+    graph = Graph(directed=True)
     # add vertices
     graph.add_vertices(vertices)
     # add edges
@@ -175,19 +208,39 @@ def prepare_graph_features(data):
     return graph_features
 
 
-def prepare_text_features(data):
-
-    # nltk.download('punkt')
-    # nltk.download('stopwords')
+def bag_of_words_intro(data):
 
     # bag of words for the introduction text
-    # bow = BagOfWords(data.loc[:, 'introduction_text'])
-    # intro_words_encoded = bow.execute()
+    bow_intro = BagOfWords(data.loc[:, 'introduction_text'])
+    intro_words_encoded = bow_intro.execute()
+
+    return intro_words_encoded
+
+
+def bag_of_words_categories(data):
+
+    bow_categories = BagOfWords(data)
+    new_categories = []
+
+    for category_list in data['category_names']:
+        category_list = [category[category.find("%")+1:] for category in category_list]
+        new_text = bow_categories.detokenize(category_list)
+        new_categories.append(new_text)
+
+    categories_encoded = bow_categories.encode_text(new_categories)
+
+    return categories_encoded
+
+
+def prepare_text_features(data):
+
+    # bag of words introduction text
+    # intro_words_encoded = bag_of_words_intro(data)
 
     text_features = data.loc[:, ['title_length', 'n_title_words', 'n_introduction_words', 'n_full_text_words',
                                  'bytes_introduction_text', 'bytes_full_text', 'n_citations', 'n_sections']].values
 
-    # text_features = csr_matrix(text_features)
+    text_features = csr_matrix(text_features)
     # text_features = hstack([text_features, intro_words_encoded])
 
     return text_features
@@ -208,14 +261,32 @@ def prepare_contributor_features(data):
 
 
 def prepare_category_features(data):
+
+    # bag of words categories
+    # categories_encoded = bag_of_words_categories(data)
+
     category_features = data.loc[:, ['n_categories']].values
+    category_features = csr_matrix(category_features)
+    # category_features = hstack([category_features, categories_encoded])
+
     return category_features
 
 
 def prepare_page_type_features(data):
-    page_type_features = data.loc[:, ['is_redirect', 'is_category_page', 'is_category_redirect', 'is_disambig',
-                                      'is_talkpage', 'is_filepage']].values
+    page_type_features = data.loc[:, ['is_category_page', 'is_disambig', 'is_talkpage', 'is_filepage']].values
     return page_type_features
+
+
+def prepare_infobox_features(data):
+
+    infoboxes = []
+    for infobox_list in data['infoboxes']:
+        if infobox_list:
+            infoboxes.append(1)
+        else:
+            infoboxes.append(0)
+
+    return infoboxes
 
 
 def prepare_input_data(data):
@@ -244,19 +315,22 @@ def prepare_input_data(data):
 
     # category features
     category_features = prepare_category_features(data)
-    category_features = csr_matrix(category_features)
 
     # page type features
     page_type_features = prepare_page_type_features(data)
     page_type_features = csr_matrix(page_type_features)
 
-    # # graph features
+    # infobox features
+    infobox_features = prepare_infobox_features(data)
+    infobox_features = csr_matrix(infobox_features).transpose()
+
+    # graph features
     graph_features = prepare_graph_features(data)
     graph_features = csr_matrix(graph_features)
 
-    # # join all x features for the algorithms
-    x_features = hstack([text_features, link_features, contributor_features,
-                         category_features, page_type_features, graph_features])
+    # join all x features for the algorithms
+    x_features = hstack([text_features, link_features, contributor_features, category_features,
+                         page_type_features, infobox_features, graph_features])
 
     # convert to csr matrix (hstack returns a coo sparse matrix)
     # to allow slicing over this matrix when training the algorithms (mini-batching)

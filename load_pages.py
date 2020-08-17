@@ -87,13 +87,17 @@ class FeatureEngineering:
         last_edit = self.page['contributors']['last_edit']
         last = datetime.timestamp(datetime.strptime(last_edit, "%Y-%m-%dT%H:%M:%SZ"))
         now = datetime.timestamp(datetime.now())
-        time_since_last_edit.append(now-last)
+        scaled_time = (now-last) / (60 * 60 * 24)
+        time_since_last_edit.append(scaled_time)
+        # time_since_last_edit.append(now-last)
 
         # first edit since today
         time_since_first_edit = self.data.get('time_since_first_edit')
         first_edit = self.page['contributors']['first_edit']
         first = datetime.timestamp(datetime.strptime(first_edit, "%Y-%m-%dT%H:%M:%SZ"))
-        time_since_first_edit.append(now - first)
+        scaled_time = (now - first) / (60 * 60 * 24)
+        time_since_first_edit.append(scaled_time)
+        # time_since_first_edit.append(now - first)
 
     def load_category_features(self):
 
@@ -128,8 +132,8 @@ class FeatureEngineering:
         n_image_links.append(self.page['links']['n_image_links'])
 
         # back links
-        # back_links = self.data.get('back_links')
-        # back_links.append(self.page['links']['back_links'])
+        back_links = self.data.get('back_links')
+        back_links.append(self.page['links']['back_links'])
 
         # number of back links
         n_back_links = self.data.get('n_back_links')
@@ -142,16 +146,16 @@ class FeatureEngineering:
     def load_page_type_features(self):
 
         # is redirect page
-        is_redirect = self.data.get('is_redirect')
-        is_redirect.append(self.page['page_type']['is_redirect'])
+        # is_redirect = self.data.get('is_redirect')
+        # is_redirect.append(self.page['page_type']['is_redirect'])
 
         # is category page
         is_category_page = self.data.get('is_category_page')
         is_category_page.append(self.page['page_type']['is_category_page'])
 
         # is_category_redirect page
-        is_category_redirect = self.data.get('is_category_redirect')
-        is_category_redirect.append(self.page['page_type']['is_category_redirect'])
+        # is_category_redirect = self.data.get('is_category_redirect')
+        # is_category_redirect.append(self.page['page_type']['is_category_redirect'])
 
         # is_disambig page
         is_disambig = self.data.get('is_disambig')
@@ -187,7 +191,7 @@ def load_pages(file):
             'n_internal_links': [],
             'n_external_links': [],
             'n_image_links': [],
-            # 'back_links': [],
+            'back_links': [],
             'n_back_links': [],
             'n_lang_links': [],
             'n_contributors': [],
@@ -196,9 +200,9 @@ def load_pages(file):
             'time_since_first_edit': [],
             'category_names': [],
             'n_categories': [],
-            'is_redirect': [],
+            # 'is_redirect': [],
             'is_category_page': [],
-            'is_category_redirect': [],
+            # 'is_category_redirect': [],
             'is_disambig': [],
             'is_talkpage': [],
             'is_filepage': []}

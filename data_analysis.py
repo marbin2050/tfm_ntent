@@ -7,7 +7,7 @@ import numpy as np
 from matplotlib import pylab
 
 
-def check_for_nulls(data):
+# def check_for_nulls(data):
 
     # # empty values
     # empty_values = (df['text'] == ' ').value_counts()
@@ -25,12 +25,9 @@ def check_for_nulls(data):
     # null_values = df.isnull().sum().sum()
     # print("\nNull values: " + str(null_values))
 
-
-    total = data.shape[0]
-    for col in data.columns:
-        zeroes = data[col].loc[data.loc[:, col].isin([0])].count()
-        if zeroes == total:
-            print(col + " only have zero values")
+    # text features
+    # text_features = data.loc[:, ['title_length', 'n_title_words', 'n_introduction_words', 'n_full_text_words',
+    #                              'bytes_introduction_text', 'bytes_full_text', 'n_citations', 'n_sections']]
 
 
 def h_approx(n):
@@ -128,68 +125,102 @@ def zip_law(word_freq, output_plots_path):
     pyplot.close(fig)
 
 
+def check_anomaly_values(data):
+
+    # print("\nViews feature has " + str(len(data[data['views'].isnull()])) + " null values")
+    # print("Views feature has " + str(len(data[data['views'] == ' '])) + " empty values")
+    # print("Views feature has " + str(len(data[data['views'] == 0])) + " zero values")
+
+    pass
+
+
 def data_summary(data):
+
+    # FIRST LOOK AT DATA
+    # show first rows
+    print(data.head())
+
+    # features info
+    print(data.info())
+
+    # dimensions
+    print(data.shape)
+
+    # statistics
+    print(data.describe())
+
+    # max/min views
+    print("Maximum number of views is:", data['views'].max())
+    print("Minimum number of views is:", data['views'].min())
+
+    # summary of anomaly values
+    check_anomaly_values(data)
+
+
+def data_wrangling(data):
+
+    # drop duplicates
+    data = data.drop_duplicates('full_url')
+
+    # delete pages (rows) with n_introduction_words < 2
+    data = data[data['n_introduction_words'] >= 2]
+
+
+# def data_wrangling(data):
 
     output_plots_path = "data/output_files/data_analysis/"
 
-    # get text column
-    text_list = data.loc[:, "text"]
-
-    # DROP text, text_features and links OUT while they are not received (request Wikipedia data again)
-    data = data.drop(['text', 'text_features', 'links'], axis=1)
-
-    # STEP 1: FIRST LOOK AT DATA
-    print(data.head())
-    print(data.info())
+    # # get text column
+    # text_list = data.loc[:, "text"]
+    #
+    # # DROP text, text_features and links OUT while they are not received (request Wikipedia data again)
+    # data = data.drop(['text', 'text_features', 'links'], axis=1)
 
     # STEP 2: CHECK ALL NULL (ZERO) VALUES
-    check_for_nulls(data)
+    # check_for_nulls(data)
 
-    # STEP 2: DESCRIPTIVE STATISTICS OF VARIABLES
-    print(data.describe())
-
-    # STEP 3: HISTOGRAMS FOR EACH NUMERICAL VARIABLE (DISTRIBUTIONS)
-    data_num = data.select_dtypes(include=['int64'])  # numerical data
-    print(data_num.head())
-
-    ax = data_num.hist(figsize=(20, 20), bins=200, xlabelsize=8, ylabelsize=8)
-    plt.figure()
-    fig = ax[0][0].get_figure()
-    fig.savefig(output_plots_path + 'numerical_vars_distribution.png', dpi=300, bbox_inches='tight')
-    pyplot.close(fig)
-
-    # STEP 4: STACKED BAR FOR BOOLEAN VARIABLES
-    data_bool = data.select_dtypes(include=['boolean'])  # boolean data
-    print(data_bool.head())
-    # plot each page type in a separate column
-    show_pages_by_type(data, output_plots_path)
-
-    # STEP 5: PAGES WITH MORE THAN ONE SUBTYPE
-    sub_types = ['is_redirect', 'is_category_page', 'is_category_redirect', 'is_talkpage', 'is_disambig',
-                 'is_filepage', 'section']
-    n_pages = (data.loc[:, sub_types].sum(axis=1) > 1).value_counts()[1]
-    print("There are " + str(n_pages) + " pages with more than one subtype (" + str(round(n_pages/data.shape[0]*100))
-          + "% of total pages)")
-
-    # STEP 6: CORRELATION MATRIX
-    corr_matrix = data_num.corr()
-    # correlations sorted in descending order
-    corr = corr_matrix.stack().abs()
-    corr = corr[corr.index.get_level_values(0) != corr.index.get_level_values(1)]
-    corr = corr.sort_values(ascending=False)
-    corr = corr.drop_duplicates()
-    print(corr)
-    # plot matrix
-    ax = sn.heatmap(corr_matrix, annot=True, annot_kws={"fontsize":6})
-    plt.figure(figsize=(30, 30))
-    fig = ax.get_figure()
-    fig.savefig(output_plots_path + 'num_vars_corr_matrix.png', dpi=300, bbox_inches='tight')
-    pyplot.close(fig)
-
-    # STEP 7: WORD FREQUENCY
-    word_freq = word_frequency(text_list)
-
-    # ZIP LAW
-    zip_law(word_freq, output_plots_path)
-
-    # STEP 9: WORD CLOUDS
+    # # STEP 3: HISTOGRAMS FOR EACH NUMERICAL VARIABLE (DISTRIBUTIONS)
+    # data_num = data.select_dtypes(include=['int64'])  # numerical data
+    # print(data_num.head())
+    #
+    # ax = data_num.hist(figsize=(20, 20), bins=200, xlabelsize=8, ylabelsize=8)
+    # plt.figure()
+    # fig = ax[0][0].get_figure()
+    # fig.savefig(output_plots_path + 'numerical_vars_distribution.png', dpi=300, bbox_inches='tight')
+    # pyplot.close(fig)
+    #
+    # # STEP 4: STACKED BAR FOR BOOLEAN VARIABLES
+    # data_bool = data.select_dtypes(include=['boolean'])  # boolean data
+    # print(data_bool.head())
+    # # plot each page type in a separate column
+    # show_pages_by_type(data, output_plots_path)
+    #
+    # # STEP 5: PAGES WITH MORE THAN ONE SUBTYPE
+    # sub_types = ['is_redirect', 'is_category_page', 'is_category_redirect', 'is_talkpage', 'is_disambig',
+    #              'is_filepage', 'section']
+    # n_pages = (data.loc[:, sub_types].sum(axis=1) > 1).value_counts()[1]
+    # print("There are " + str(n_pages) + " pages with more than one subtype (" + str(round(n_pages/data.shape[0]*100))
+    #       + "% of total pages)")
+    #
+    # # STEP 6: CORRELATION MATRIX
+    # corr_matrix = data_num.corr()
+    # # correlations sorted in descending order
+    # corr = corr_matrix.stack().abs()
+    # corr = corr[corr.index.get_level_values(0) != corr.index.get_level_values(1)]
+    # corr = corr.sort_values(ascending=False)
+    # corr = corr.drop_duplicates()
+    # print(corr)
+    # # plot matrix
+    # ax = sn.heatmap(corr_matrix, annot=True, annot_kws={"fontsize":6})
+    # plt.figure(figsize=(30, 30))
+    # fig = ax.get_figure()
+    # fig.savefig(output_plots_path + 'num_vars_corr_matrix.png', dpi=300, bbox_inches='tight')
+    # pyplot.close(fig)
+    #
+    # # STEP 7: WORD FREQUENCY
+    # word_freq = word_frequency(text_list)
+    #
+    # # ZIP LAW
+    # zip_law(word_freq, output_plots_path)
+    #
+    # # STEP 9: WORD CLOUDS

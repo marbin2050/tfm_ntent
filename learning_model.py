@@ -31,15 +31,15 @@ class Partitions:
         self.y_val = np.log(self.y_val)
         self.y_test = np.log(self.y_test)
 
-        # feature Scaling
-        sc_x = StandardScaler(with_mean=False)
-        sc_y = StandardScaler(with_mean=False)
-        self.x_train = sc_x.fit_transform(self.x_train)
-        self.y_train = sc_y.fit_transform(self.y_train)
-        self.x_val = sc_x.fit_transform(self.x_val)
-        self.y_val = sc_y.fit_transform(self.y_val)
-        self.x_test = sc_x.fit_transform(self.x_test)
-        self.y_test = sc_y.fit_transform(self.y_test)
+        # # feature Scaling
+        # sc_x = StandardScaler(with_mean=False)
+        # sc_y = StandardScaler(with_mean=False)
+        # self.x_train = sc_x.fit_transform(self.x_train)
+        # self.y_train = sc_y.fit_transform(self.y_train)
+        # self.x_val = sc_x.fit_transform(self.x_val)
+        # self.y_val = sc_y.fit_transform(self.y_val)
+        # self.x_test = sc_x.fit_transform(self.x_test)
+        # self.y_test = sc_y.fit_transform(self.y_test)
 
 
 def get_minibatch(x, y, indexes, size):
@@ -183,17 +183,35 @@ class LightGBMBatch:
 
     def execute(self):
 
-        size = 1000
+        size = 4460
         estimator = None
-        for iteration, x in enumerate(range(0, self.partitions.x_train.shape[0] - size, size)):
-            indices = list(range(x, x + size))
 
-            estimator = lgb.train(self.hyperparams,
+        total_indexes = self.partitions.x_train.shape[0]
+        index_count = 0
+        while index_count < total_indexes:
+            if (index_count + size) < total_indexes:
+                indexes = list(range(index_count, index_count + size))
+            else:
+                indexes = list(range(index_count, total_indexes))
+
+            index_count = index_count + len(indexes)
+
+            estimator = lgb.train(self.params,
                                   init_model=estimator,
-                                  train_set=lgb.Dataset(self.partitions.x_train[indices].toarray(),
-                                                        self.partitions.y_train[indices].flatten()),
+                                  train_set=lgb.Dataset(self.partitions.x_train[indexes].toarray(),
+                                                        self.partitions.y_train[indexes].flatten()),
                                   keep_training_booster=True,
-                                  num_boost_round=100)
+                                  num_boost_round=5000)
+
+        # for iteration, x in enumerate(range(0, self.partitions.x_train.shape[0] - size, size)):
+        #     indices = list(range(x, x + size))
+        #
+        #     estimator = lgb.train(self.params,
+        #                           init_model=estimator,
+        #                           train_set=lgb.Dataset(self.partitions.x_train[indices].toarray(),
+        #                                                 self.partitions.y_train[indices].flatten()),
+        #                           keep_training_booster=True,
+        #                           num_boost_round=2000)
 
         # prediction
         y_pred = estimator.predict(self.partitions.x_test)
@@ -254,10 +272,12 @@ class LightGBMRFECV:
         selector = RFECV(estimator, step=1, cv=4, scoring="neg_mean_squared_error", verbose=-1)
         selector.fit(self.partitions.x_train, self.partitions.y_train)
 
+        # # prediction
+        # y_pred = selector.predict(self.partitions.x_test)
+
         # select only the best features
-        # x_test = self.partitions.x_test[:, selector.support_]
-        # prediction
-        y_pred = selector.predict(self.partitions.x_test)
+        selector.fit(self.partitions.x_train[:, selector.support_], self.partitions.y_train)
+        y_pred = selector.predict(self.partitions.x_test[:, selector.support_])
 
         # number of best features
         self.n_features = selector.n_features_
