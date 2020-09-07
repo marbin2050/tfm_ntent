@@ -134,6 +134,27 @@ def check_anomaly_values(data):
     pass
 
 
+def show_correlation_matrix(num_data, output_plots_path="data/output_files/data_analysis/"):
+
+    # CORRELATION MATRIX
+    corr_matrix = num_data.corr()
+    # correlations sorted in descending order
+    corr = corr_matrix.stack().abs()
+    corr = corr[corr.index.get_level_values(0) != corr.index.get_level_values(1)]
+    corr = corr.sort_values(ascending=False)
+    corr = corr.drop_duplicates()
+    print(corr)
+    # plot matrix
+    sn.set(font_scale=0.8)
+    fig, ax = plt.subplots(figsize=(6, 6))  # Sample figsize in inches
+    ax = sn.heatmap(corr_matrix, annot=True, annot_kws={"fontsize": 10}, ax=ax,
+                    cmap=sn.cm.rocket_r)
+    # plt.figure(figsize=(100, 100))
+    # fig = ax.get_figure()
+    # fig.savefig(output_plots_path + 'num_vars_corr_matrix.png', dpi=300, bbox_inches='tight')
+    pyplot.close(fig)
+
+
 def data_summary(data):
 
     # FIRST LOOK AT DATA
@@ -149,12 +170,12 @@ def data_summary(data):
     # statistics
     print(data.describe())
 
-    # max/min views
-    print("Maximum number of views is:", data['views'].max())
-    print("Minimum number of views is:", data['views'].min())
-
     # summary of anomaly values
-    check_anomaly_values(data)
+    # check_anomaly_values(data)
+
+    # correlation matrix
+    num_data = data.select_dtypes(include=['int64', 'float64'])  # numerical data
+    show_correlation_matrix(num_data)
 
 
 def data_wrangling(data):
@@ -165,10 +186,31 @@ def data_wrangling(data):
     # delete pages (rows) with n_introduction_words < 2
     data = data[data['n_introduction_words'] >= 2]
 
+    # check missing values
+
+    # check unique values
+    columns_to_drop = []  # drop columns with no distinct values
+    for column_name in data:
+        count = len(data[column_name].value_counts())
+        if count == 1:
+            # columns_to_drop.append(column_name)
+            print(column_name)
+    for column_name in columns_to_drop:
+        data = data.drop(columns=column_name)
+
+    # reset index
+    data = data.reset_index(drop=True)
+
+    # show correlations between features
+
+
+
+
+    return data
 
 # def data_wrangling(data):
 
-    output_plots_path = "data/output_files/data_analysis/"
+    # output_plots_path = "data/output_files/data_analysis/"
 
     # # get text column
     # text_list = data.loc[:, "text"]
@@ -202,20 +244,7 @@ def data_wrangling(data):
     # print("There are " + str(n_pages) + " pages with more than one subtype (" + str(round(n_pages/data.shape[0]*100))
     #       + "% of total pages)")
     #
-    # # STEP 6: CORRELATION MATRIX
-    # corr_matrix = data_num.corr()
-    # # correlations sorted in descending order
-    # corr = corr_matrix.stack().abs()
-    # corr = corr[corr.index.get_level_values(0) != corr.index.get_level_values(1)]
-    # corr = corr.sort_values(ascending=False)
-    # corr = corr.drop_duplicates()
-    # print(corr)
-    # # plot matrix
-    # ax = sn.heatmap(corr_matrix, annot=True, annot_kws={"fontsize":6})
-    # plt.figure(figsize=(30, 30))
-    # fig = ax.get_figure()
-    # fig.savefig(output_plots_path + 'num_vars_corr_matrix.png', dpi=300, bbox_inches='tight')
-    # pyplot.close(fig)
+
     #
     # # STEP 7: WORD FREQUENCY
     # word_freq = word_frequency(text_list)
@@ -224,3 +253,31 @@ def data_wrangling(data):
     # zip_law(word_freq, output_plots_path)
     #
     # # STEP 9: WORD CLOUDS
+
+
+    # NORMALITY
+    # show y and log(y) distributions
+    # import seaborn as sns
+    # views = data['views']
+    # sns.distplot(views, kde=False, rug=True)  # rug/ticks
+    # sns.distplot(views, kde=True, rug=False)  # density
+    # import numpy as np
+    # log_views = np.log(data['views'])
+    # sns.distplot(log_views, kde=False, rug=True)  # rug/ticks
+    # sns.distplot(log_views, kde=True, rug=False)  # density
+    #
+    # # normality test
+    # from scipy.stats import shapiro
+    # stat, p = shapiro(views)
+    # alpha = 0.05
+    # if p > alpha:
+    #     print('Sample looks Gaussian (fail to reject H0)')
+    # else:
+    #     print('Sample does not look Gaussian (reject H0)')
+    #
+    # stat, p = shapiro(log_views)
+    # alpha = 0.05
+    # if p > alpha:
+    #     print('Sample looks Gaussian (fail to reject H0)')
+    # else:
+    #     print('Sample does not look Gaussian (reject H0)')

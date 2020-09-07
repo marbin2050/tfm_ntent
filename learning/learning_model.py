@@ -1,7 +1,7 @@
 import sklearn.linear_model as linear_model
 from lightgbm import LGBMRegressor
 from sklearn.feature_selection import RFECV
-from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.model_selection import train_test_split, GridSearchCV, RandomizedSearchCV
 import lightgbm as lgb
 import random
 import numpy as np
@@ -19,27 +19,30 @@ class Partitions:
         self.y_val = y_val
         self.y_test = y_test
 
-    def create_data_partitions(self, x, y):
+    def create_data_partitions(self, x, y, normalized=False, with_validation=False):
 
         # split in train and test data
-        self.x_train, self.x_test, self.y_train, self.y_test = train_test_split(x, y, test_size=0.2, random_state=0)
-        # split train and validation data
-        self.x_train, self.x_val, self.y_train, self.y_val = train_test_split(self.x_train, self.y_train,
-                                                                              test_size=0.25, random_state=0)
-        # log dependent variable
-        self.y_train = np.log(self.y_train)
-        self.y_val = np.log(self.y_val)
-        self.y_test = np.log(self.y_test)
+        self.x_train, self.x_test, self.y_train, self.y_test = train_test_split(x, y, test_size=0.2, random_state=42)
 
-        # # feature Scaling
-        # sc_x = StandardScaler(with_mean=False)
-        # sc_y = StandardScaler(with_mean=False)
-        # self.x_train = sc_x.fit_transform(self.x_train)
-        # self.y_train = sc_y.fit_transform(self.y_train)
-        # self.x_val = sc_x.fit_transform(self.x_val)
-        # self.y_val = sc_y.fit_transform(self.y_val)
-        # self.x_test = sc_x.fit_transform(self.x_test)
-        # self.y_test = sc_y.fit_transform(self.y_test)
+        if normalized:
+            # feature Scaling
+            sc_x = StandardScaler(with_mean=False)
+            sc_y = StandardScaler(with_mean=False)
+            self.x_train = sc_x.fit_transform(self.x_train)
+            self.y_train = sc_y.fit_transform(self.y_train)
+            self.x_test = sc_x.fit_transform(self.x_test)
+            self.y_test = sc_y.fit_transform(self.y_test)
+
+        if with_validation:
+            # split train and validation data
+            self.x_train, self.x_val, self.y_train, self.y_val = train_test_split(self.x_train, self.y_train,
+                                                                                  test_size=0.25, random_state=42)
+            # feature Scaling
+            self.y_val = np.log(self.y_val)
+            if normalized:
+                # feature Scaling
+                self.x_val = sc_x.fit_transform(self.x_val)
+                self.y_val = sc_y.fit_transform(self.y_val)
 
 
 def get_minibatch(x, y, indexes, size):
@@ -71,6 +74,32 @@ class DummyRegressor:
         return self.y_pred, self.partitions.y_test
 
 
+class LinearRegression:
+
+    def __init__(self, partitions):
+        self.partitions = partitions  # train and test data partitions
+        self.coeff = None
+        self.y_pred = None
+
+    def execute(self):
+
+        # create model
+        # model = linear_model.LinearRegression(fit_intercept=True, n_jobs=-1)
+        model = linear_model.LinearRegression(n_jobs=-1)
+
+        # train (no batches)
+        model.fit(self.partitions.x_train, self.partitions.y_train)
+
+        # get regression coefficients
+        self.coeff = model.coef_
+
+        # prediction
+        y_pred = model.predict(self.partitions.x_test)
+        self.y_pred = y_pred
+
+        return y_pred, self.partitions.y_test
+
+
 class LinearRegressionBatch:
 
     def __init__(self, partitions):
@@ -82,7 +111,7 @@ class LinearRegressionBatch:
     def execute(self):
 
         # create model
-        model = linear_model.SGDRegressor()
+        model = linear_model.SGDRegressor(n_jobs=-1)
 
         # indexes to be used for getting minibatches
         indexes = np.arange(self.partitions.x_train.shape[0])
@@ -90,12 +119,9 @@ class LinearRegressionBatch:
         while len(indexes) > 0:
             # get minibatches
             x_train, y_train, indexes = get_minibatch(self.partitions.x_train, self.partitions.y_train, indexes,
-                                                      size=100)
+                                                      size=10000)
 
             model.partial_fit(x_train, y_train)
-
-        # train (no batches)
-        # model.fit(self.partitions.x_train, self.partitions.y_train)
 
         # get regression coefficients
         self.coeff = model.coef_
@@ -142,8 +168,10 @@ class LightGBM:
     def __init__(self, partitions, best_params):
 
         # LightGBM training parameters
+        # self.params = {'n_iter': 10000, 'boosting_type': 'gbdt', 'objective': 'regression', 'verbose': -1}
+
         self.params = {'n_iter': 10000, 'learning_rate': 0.001, 'boosting_type': 'gbdt', 'objective': 'regression',
-                       'metric': 'mae', 'num_leaves': 350, 'max_depth': 9, 'min_data_in_leaf': 100,
+                       'metric': 'mae', 'num_leaves': 350, 'max_depth': 9, 'min_data_in_leaf': 100, 'max_bin': 100,
                        'verbose': -1}
 
         if best_params:
@@ -174,16 +202,24 @@ class LightGBMBatch:
     def __init__(self, partitions):
 
         # LightGBM training parameters
+
+        # For 25000
         self.params = {'n_iter': 10000, 'learning_rate': 0.001, 'boosting_type': 'gbdt', 'objective': 'regression',
                        'metric': 'mae', 'num_leaves': 350, 'max_depth': 9, 'min_data_in_leaf': 100,
                        'verbose': -1}
+
+        # For 75000
+        # self.params = {'boosting_type': 'gbdt', 'objective': 'regression', 'metric': 'mae', 'learning_rate': 0.001,
+        #                'max_bin': 255, 'max_depth': 12, 'min_data_in_leaf': 125, 'n_iter': 10000, 'num_leaves': 350,
+        #                'verbose': -1}
 
         self.partitions = partitions  # train and test data partitions
         self.y_pred = None
 
     def execute(self):
 
-        size = 4460
+        # size = 4460
+        size = 15000
         estimator = None
 
         total_indexes = self.partitions.x_train.shape[0]
@@ -202,16 +238,6 @@ class LightGBMBatch:
                                                         self.partitions.y_train[indexes].flatten()),
                                   keep_training_booster=True,
                                   num_boost_round=5000)
-
-        # for iteration, x in enumerate(range(0, self.partitions.x_train.shape[0] - size, size)):
-        #     indices = list(range(x, x + size))
-        #
-        #     estimator = lgb.train(self.params,
-        #                           init_model=estimator,
-        #                           train_set=lgb.Dataset(self.partitions.x_train[indices].toarray(),
-        #                                                 self.partitions.y_train[indices].flatten()),
-        #                           keep_training_booster=True,
-        #                           num_boost_round=2000)
 
         # prediction
         y_pred = estimator.predict(self.partitions.x_test)
@@ -233,11 +259,17 @@ class LightGBMTuning:
 
         # hyperparameter tuning
         param_grid = {'num_leaves': [350],
-                      'max_depth': [9, 10, 12],
-                      'learning_rate': [0.001, 0.0001],
-                      'min_data_in_leaf': [50, 75, 100],
-                      'max_bin': [100, 255, 500],
+                      'max_depth': [9],
+                      'learning_rate': [0.001, 0.002],
+                      'min_data_in_leaf': [100],
+                      'max_bin': [100],
+                      # 'lambda_l1': [0.0, 0.01, 0.05, 1.0],
+                      'lambda_l2': [0.0, 0.03, 1.0],
                       'n_iter': [10000]}
+
+        # For 75000
+        # {'learning_rate': 0.001, 'max_bin': 255, 'max_depth': 12, 'min_data_in_leaf': 125, 'n_iter': 10000,
+        #  'num_leaves': 350}
 
         # create model
         estimator = LGBMRegressor(boosting_type='gbdt', objective='regression')
@@ -291,32 +323,69 @@ class LightGBMRFECV:
         return y_pred, self.partitions.y_test
 
 
-# class LightGBMRFECVTuning:
-#
-#     def __init__(self, partitions):
-#         self.partitions = partitions  # train and test data partitions
-#
-#     def execute(self):
-#
-#         param_grid = [{'estimator__num_leaves': [70]},
-#                       {'estimator__max_depth': [7]}]
-#
-#         # create model
-#         estimator = LGBMRegressor(boosting_type='gbdt', objective='regression')
-#
-#         selector = RFECV(estimator, step=1, cv=4, scoring="neg_mean_squared_error")
-#         search = GridSearchCV(selector, param_grid, cv=7)
-#         search.fit(self.partitions.x_train, self.partitions.y_train)
-#         search.best_estimator_.estimator_
-#         search.best_estimator_.grid_scores_
-#         search.best_estimator_.ranking_
-#
-#         # select only the best features
-#         x_test = self.partitions.x_test[:, search.best_estimator_.support_]
-#
-#         # prediction
-#         y_pred = search.best_estimator_.estimator_.predict(x_test)
-#         self.y_pred = y_pred
-#
-#         return y_pred, self.partitions.y_test
+class LogisticRegression:
 
+    def __init__(self, partitions):
+        self.partitions = partitions  # train and test data partitions
+        self.coeff = None
+        self.y_pred = None
+
+    def execute(self):
+
+        # create model
+        # model = linear_model.LogisticRegression(max_iter=100000, C=0.1, class_weight='balanced', n_jobs=5)
+        model = linear_model.LogisticRegression(max_iter=100000, C=0.1)
+
+        # train (no batches)
+        model.fit(self.partitions.x_train, self.partitions.y_train)
+
+        # get regression coefficients
+        self.coeff = model.coef_
+
+        # prediction
+        y_pred = model.predict(self.partitions.x_test)
+        self.y_pred = y_pred
+
+        return y_pred, self.partitions.y_test
+
+
+class LogisticRegressionTuning:
+
+    def __init__(self, partitions):
+        self.partitions = partitions  # train and test data partitions
+        self.y_pred = None
+        self.best_params = None
+        self.best_score = None
+
+    def execute(self):
+        # hyperparameter tuning
+        param_grid = {'penalty': ['l1', 'l2'],
+                      'C': np.linspace(0.001, 100, 50)}
+        param_grid = {'penalty': ['l2'],
+                      'C': [0.001]}
+
+        # {'penalty': 'l2', 'C': 75.51044897959183}
+        # Accuracy: 0.9
+        # Precision score: 0.52
+        # Recall score: 0.14
+        # F1 score: 0.22
+
+        # {'penalty': 'l2', 'C': 0.001}
+        # Accuracy: 0.9
+        # Precision score: 0.54
+        # Recall score: 0.16
+        # F1 score: 0.24
+
+
+        # create model
+        estimator = linear_model.LogisticRegression(max_iter=100000)
+        search = RandomizedSearchCV(estimator, param_distributions=param_grid, n_iter=5, scoring='f1', n_jobs=-1, cv=5)
+        search.fit(self.partitions.x_train, self.partitions.y_train)
+
+        # prediction
+        y_pred = search.predict(self.partitions.x_test)
+        self.y_pred = y_pred
+        self.best_score = search.best_score_
+        self.best_params = search.best_params_
+
+        return y_pred, self.partitions.y_test

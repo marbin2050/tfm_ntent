@@ -15,6 +15,8 @@ import re
 from itertools import combinations
 from igraph import *
 from nltk.tokenize.treebank import TreebankWordDetokenizer
+from ordered_set import OrderedSet
+import numpy as np
 
 
 class BagOfWords:
@@ -113,17 +115,6 @@ class BagOfWords:
                 new_text = self.detokenize(word_list)
                 new_text_list.append(new_text)
 
-                # word_list = list(set(word_list))  # unique values
-                # # nltk.download('averaged_perceptron_tagger')
-                # word_list_tagged = pos_tag(word_list)
-                # # Filter words
-                # new_word_list_tagged = []
-                # for word, tag in word_list_tagged:
-                #     if tag in ['NN', 'NNS', 'NNP', 'NNPS']:
-                #         new_word_list_tagged.append(word)
-                # new_text = self.detokenize(new_word_list_tagged)
-                # new_text_list.append(new_text)
-
             except Exception as e:
                 print("Exception: " + str(e))
                 print("No words found in intro.\n")
@@ -133,54 +124,44 @@ class BagOfWords:
         return bag_of_words
 
 
-def create_graph(pages_mapping):
+def create_graph(data, only_main_pages=False):
 
-    # create the set of edges -- ideally you would dump this to a file rather than keep it in memory
-    edges = set()
-    for page_link in pages_mapping.values():
-        edges.update(set(combinations(page_link, 2)))
+    vertices = OrderedSet()
+    edges = OrderedSet()
 
-    # create graph
-    graph = Graph()
-
-    # add nodes
-    for page_node in pages_mapping.keys():
-        graph.add_node(page_node)
-
-    # add edges
-    for edge in edges:
-        graph.add_edge(edge[0], edge[1])
-
-
-def prepare_graph_features(data):
-
-    vertices = []
-    edges = []
-    main_pages_url = []
+    # get the main urls/nodes
+    main_pages_url = OrderedSet([full_url[full_url.rfind('/') + 1:] for full_url in data['full_url']])
 
     for index, row in data.iterrows():
         url = row.full_url[row.full_url.rfind('/') + 1:]  # get last part of url to match internal links format
-        main_pages_url.append(url)
-        vertices.append(url)
+        vertices.add(url)
         for internal_link in row.internal_links:
-            edges.append((url, internal_link))
-            vertices.append(internal_link)
-
-        # for back_link in row.back_links:
-        #     edges.append((back_link, url))
-        #     vertices.append(back_link)
+            if only_main_pages:
+                if internal_link in main_pages_url:
+                    edges.add((url, internal_link))
+                    # vertices.add(internal_link)
+            else:
+                edges.add((url, internal_link))
+                vertices.add(internal_link)
 
     # create graph
     graph = Graph(directed=True)
     # add vertices
-    graph.add_vertices(vertices)
+    graph.add_vertices(list(vertices))
     # add edges
-    graph.add_edges(edges)
+    graph.add_edges(list(edges))
 
     # get index of the vertices (main pages)
     index_list = []
-    for url in main_pages_url:
+    for url in list(main_pages_url):
         index_list.append(graph.vs._name_index.get(url))
+
+    return graph, index_list
+
+
+def prepare_graph_features(data):
+
+    graph, index_list = create_graph(data)
 
     # in-degree
     indegree = graph.indegree()
@@ -204,6 +185,7 @@ def prepare_graph_features(data):
     data.insert(len(data.columns), 'hub_score', hub_score)
 
     graph_features = data.loc[:, ['indegree', 'outdegree', 'pagerank', 'authority_score', 'hub_score']]
+    graph_features = graph_features.astype('f4')
 
     return graph_features
 
@@ -213,6 +195,8 @@ def bag_of_words_intro(data):
     # bag of words for the introduction text
     bow_intro = BagOfWords(data.loc[:, 'introduction_text'])
     intro_words_encoded = bow_intro.execute()
+    intro_words_encoded = csr_matrix(intro_words_encoded)
+    intro_words_encoded = intro_words_encoded.astype('f4')
 
     return intro_words_encoded
 
@@ -228,52 +212,65 @@ def bag_of_words_categories(data):
         new_categories.append(new_text)
 
     categories_encoded = bow_categories.encode_text(new_categories)
+    category_features = csr_matrix(categories_encoded)
+    category_features = category_features.astype('f4')
 
-    return categories_encoded
+    return category_features
 
 
 def prepare_text_features(data):
 
     # bag of words introduction text
-    # intro_words_encoded = bag_of_words_intro(data)
+    # bow_intro = bag_of_words_intro(data)
 
     text_features = data.loc[:, ['title_length', 'n_title_words', 'n_introduction_words', 'n_full_text_words',
-                                 'bytes_introduction_text', 'bytes_full_text', 'n_citations', 'n_sections']].values
+                                 'bytes_introduction_text', 'bytes_full_text']].values
 
     text_features = csr_matrix(text_features)
-    # text_features = hstack([text_features, intro_words_encoded])
+    # text_features = hstack([text_features, bow_intro])
+
+    text_features = text_features.astype('f4')
 
     return text_features
 
 
 def prepare_link_features(data):
-    link_features = data.loc[:, ['n_internal_links', 'n_external_links', 'n_image_links',
-                                 'n_back_links', 'n_lang_links']].values
+    link_features = data.loc[:, ['n_citations', 'n_external_links', 'n_image_links',
+                                 'n_lang_links', 'n_internal_links']].values
+
+    link_features = link_features.astype('f4')
 
     return link_features
 
 
 def prepare_contributor_features(data):
-    contributor_features = data.loc[:, ['n_contributors', 'n_contributors_edits', 'time_since_last_edit',
-                                        'time_since_first_edit']].values
+    contributor_features = data.loc[:, ['n_contributors', 'n_contributors_edits']].values
+    contributor_features = contributor_features.astype('f4')
 
     return contributor_features
 
 
-def prepare_category_features(data):
+def prepare_temporal_features(data):
+    temporal_features = data.loc[:, ['time_since_last_edit', 'time_since_first_edit']].values
 
-    # bag of words categories
-    # categories_encoded = bag_of_words_categories(data)
-
-    category_features = data.loc[:, ['n_categories']].values
-    category_features = csr_matrix(category_features)
-    # category_features = hstack([category_features, categories_encoded])
-
-    return category_features
+    return temporal_features
 
 
 def prepare_page_type_features(data):
-    page_type_features = data.loc[:, ['is_category_page', 'is_disambig', 'is_talkpage', 'is_filepage']].values
+
+    # bag of words categories
+    # bow_category = bag_of_words_categories(data)
+
+    infobox_features = prepare_infobox_features(data)
+
+    page_type_features = data.loc[:, ['n_categories', 'n_sections',
+                                      'is_category_page', 'is_disambig', 'is_talkpage', 'is_filepage']].values
+
+    page_type_features = page_type_features.astype('f4')
+
+    # page_type_features = hstack([bow_category, infobox_features, page_type_features])
+    page_type_features = hstack([infobox_features, page_type_features])
+
     return page_type_features
 
 
@@ -286,21 +283,17 @@ def prepare_infobox_features(data):
         else:
             infoboxes.append(0)
 
+    infoboxes = csr_matrix(infoboxes).transpose()
+    infoboxes = infoboxes.astype('f4')
+
     return infoboxes
 
 
-def prepare_input_data(data):
+def prepare_x_features(data):
     # sort data views
-    data = data.sort_values('views', ascending=False)
+    # data = data.sort_values('views', ascending=False)
 
-    # STEP 1: y features (dependent variables)
-    # y feature (views/popularity)
-    y_popularity = data.loc[:, ['views']].values
-    # y_popularity = y_popularity.flatten()
-    # y feature (ranking/order)
-    y_ranking = data['views'].rank(method='dense')
-
-    # STEP 2: x features (independent variables)
+    # x features (independent variables)
     # text features
     text_features = prepare_text_features(data)
     text_features = csr_matrix(text_features)  # csr matrix
@@ -313,28 +306,41 @@ def prepare_input_data(data):
     contributor_features = prepare_contributor_features(data)
     contributor_features = csr_matrix(contributor_features)
 
-    # category features
-    category_features = prepare_category_features(data)
-
     # page type features
     page_type_features = prepare_page_type_features(data)
     page_type_features = csr_matrix(page_type_features)
-
-    # infobox features
-    infobox_features = prepare_infobox_features(data)
-    infobox_features = csr_matrix(infobox_features).transpose()
 
     # graph features
     graph_features = prepare_graph_features(data)
     graph_features = csr_matrix(graph_features)
 
     # join all x features for the algorithms
-    x_features = hstack([text_features, link_features, contributor_features, category_features,
-                         page_type_features, infobox_features, graph_features])
+    x_features = hstack([text_features, link_features, page_type_features, contributor_features, graph_features])
 
     # convert to csr matrix (hstack returns a coo sparse matrix)
     # to allow slicing over this matrix when training the algorithms (mini-batching)
     x_features = x_features.tocsr()
 
-    return x_features, y_popularity, y_ranking
+    return x_features
 
+
+def prepare_y_clf_feature(data, majority_class_size):
+
+    y_clf = data.loc[:, ['views_log']].values
+    perc_up = np.percentile(y_clf, majority_class_size)
+    encoded_y = []
+    # for views in y_reg:
+    for views in y_clf:
+        if views > perc_up:
+            encoded_y.append(1)
+        else:
+            encoded_y.append(0)
+    y_clf = np.array(encoded_y)
+
+    return y_clf
+
+
+def prepare_y_reg_feature(data):
+    y = data.loc[:, ['views_log']].values
+
+    return y

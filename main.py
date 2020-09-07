@@ -1,104 +1,111 @@
 __author__ = '{Alfonso Aguado Bustillo}'
 
-from feature_extraction import feature_extraction
-from feature_selection import feature_selection
 from load_pages import load_pages
 from data_analysis import data_wrangling, data_summary
-from preprocessing import prepare_input_data
-from learning_model import Partitions, LightGBM, DummyRegressor, \
-    LinearRegressionBatch, LightGBMRFECV, LightGBMTuning, LightGBMBatch
+from preprocessing import prepare_x_features, prepare_y_clf_feature, prepare_y_reg_feature
+from learning.graph_attention_network import GraphAttentionNetwork
+from learning.learning_model import Partitions, LightGBM, DummyRegressor, LinearRegression, LogisticRegression
 import evaluate
+import numpy as np
 
-if __name__ == '__main__':
 
-    # STEP 1: REQUEST AND STORE WIKIPEDIA PAGES
+def regression_problem(data, x_features):
+    # y feature (dependent variable)
+    # y feature (views/popularity) for regression
+    y_reg = prepare_y_reg_feature(data)
+
+    # regression partitions
+    partitions = Partitions()
+    partitions.create_data_partitions(x_features, y_reg, normalized=False, with_validation=False)
+
+    # Linear Regression
+    lr = LinearRegression(partitions)
+    y_pred, y_test = lr.execute()
+    evaluate.summary(y_pred, y_test, "Linear Regression")
+
+    # LightGBM
+    lgbm = LightGBM(partitions, best_params=None)
+    y_pred, y_test = lgbm.execute()
+    evaluate.summary(y_pred, y_test, "LightGBM regression")
+
+    # Dummy Regressor
+    dr = DummyRegressor(partitions)
+    y_pred, y_test = dr.execute()
+    evaluate.summary(y_pred, y_test, "Dummy regressor")
+
+
+def classification_problem(data, x_features):
+    lgr_results = {}
+    gat_results = {}
+    dummy_clf_results = {}
+
+    # execute different buckets
+    for majority_class_size in range(95, 55, -5):
+        # y feature for classification
+        y_clf = prepare_y_clf_feature(data, majority_class_size)
+
+        partitions = Partitions()
+        partitions.create_data_partitions(x_features, y_clf, normalized=False, with_validation=False)
+
+        process_title = str(100 - majority_class_size) + "/" + str(majority_class_size) + "]"
+        key_name = str(100 - majority_class_size) + "/" + str(majority_class_size)
+        # Logistic Regression
+        lgr = LogisticRegression(partitions)
+        y_pred, y_test = lgr.execute()
+
+        title = "Logistic regression [" + process_title
+        lgr_result = evaluate.summary(y_pred, y_test, regression=False, process_title=title)
+        lgr_results[key_name] = lgr_result
+
+        # Graph Attention Network
+        gat = GraphAttentionNetwork(data, x_features, y_clf)
+        y_pred, y_test = gat.execute()
+        title = "GAT [" + process_title
+        gat_result = evaluate.summary(y_pred, y_test, regression=False, process_title=title)
+        gat_results[key_name] = gat_result
+
+        # Dummy classifier
+        y_pred_dummy = [0] * len(partitions.y_test)
+        title = "Dummy Classifier [" + process_title
+        dummy_clf_result = evaluate.summary(y_pred_dummy, partitions.y_test, regression=False, process_title=title)
+        dummy_clf_results[key_name] = dummy_clf_result
+
+    # show metric's plots for Logistic Regression
+    evaluate.plots_summary(lgr_results, output_file_name='data/output_files/lgr_results.png')
+    # show metric's plots for Graph Attention Network
+    evaluate.plots_summary(gat_results, output_file_name='data/output_files/gat_results.png')
+    # show metric's plots for Dummy Classifier
+    evaluate.plots_summary(dummy_clf_results, output_file_name='data/output_files/dummy_clf_results.png')
+
+
+def main():
+
+    # REQUEST AND STORE WIKIPEDIA PAGES
     # by executing the request_pages.py script
 
-    # STEP 2: LOAD WIKIPEDIA PAGES
+    # LOAD WIKIPEDIA PAGESº
     pages_file = "data/output_files/_75000_top_docs_all.gz"
     data = load_pages(pages_file)
+    # dataset of 10.000 samples
+    data = data.sample(n=50000, random_state=42)
+    data = data.sort_values('views', ascending=False).reset_index(drop=True)
 
-    # data = data[:200]
+    # add views (log) to the dataframe
+    views_log = np.log(data['views'])
+    data.insert(1, 'views_log', views_log)
 
     # STEP 3: DATA SUMMARY AND WRANGLING OF LOADED PAGES
+    data = data_wrangling(data)
     data_summary(data)
-    data_wrangling(data)
 
-    # # show y and log(y) distributions
-    # import seaborn as sns
-    # views = data['views']
-    # sns.distplot(views, kde=False, rug=True)  # rug/ticks
-    # sns.distplot(views, kde=True, rug=False)  # density
-    # import numpy as np
-    # log_views = np.log(data['views'])
-    # sns.distplot(log_views, kde=False, rug=True)  # rug/ticks
-    # sns.distplot(log_views, kde=True, rug=False)  # density
-    #
-    # # normality test
-    # from scipy.stats import shapiro
-    # stat, p = shapiro(views)
-    # alpha = 0.05
-    # if p > alpha:
-    #     print('Sample looks Gaussian (fail to reject H0)')
-    # else:
-    #     print('Sample does not look Gaussian (reject H0)')
-    #
-    # stat, p = shapiro(log_views)
-    # alpha = 0.05
-    # if p > alpha:
-    #     print('Sample looks Gaussian (fail to reject H0)')
-    # else:
-    #     print('Sample does not look Gaussian (reject H0)')
+    # extract the x features or independent variables
+    x = prepare_x_features(data)
 
-    # STEP 4: PREPROCESSING TRAINING/TEST DATA
-    x, y_popularity, y_ranking = prepare_input_data(data)
+    # REGRESSION PROBLEM
+    regression_problem(data, x)
 
-    partitions = Partitions()
-    partitions.create_data_partitions(x, y_popularity)
+    # CLASSIFICATION PROBLEM
+    # classification_problem(data, x)
 
-    # STEP 4: FEATURE EXTRACTION
-    # feature_extraction(data)
 
-    # STEP 5: FEATURE SELECTION
-    # feature_selection(data)
-
-    # STEP 6: Dummy regressor
-    # dr = DummyRegressor(partitions)
-    # y_pred, y_test = dr.execute()
-    # evaluate.summary(y_pred, y_test, "Dummy regressor [views]")
-    #
-    # STEP 7: Linear regression
-    # lr = LinearRegressionBatch(partitions)
-    # y_pred, y_test = lr.execute()
-    # evaluate.summary(y_pred, y_test, "Linear Regression [views]")
-
-    # STEP 8: LGBM
-    # hyparameter tuning
-    # lgbm_tuning = LightGBMTuning(partitions)
-    # y_pred, y_test = lgbm_tuning.execute()
-    # evaluate.summary(y_pred, y_test, "LightGBM tuning regression [views]")
-    # best_params = lgbm_tuning.best_params  # get best params
-
-    # model training
-    # lgbm = LightGBM(partitions, best_params=None)
-    # y_pred, y_test = lgbm.execute()
-    # evaluate.summary(y_pred, y_test, "LightGBM regression [views]")
-
-    lgbm_batch = LightGBMBatch(partitions)
-    y_pred, y_test = lgbm_batch.execute()
-    evaluate.summary(y_pred, y_test, "LightGBM Batch regression [views]")
-
-    # recursive feature elimination to identify the best features (explain more variance)
-    # lgbm_rfecv = LightGBMRFECV(partitions)
-    # y_pred, y_test = lgbm_rfecv.execute()
-    # evaluate.summary(y_pred, y_test, "LightGBM RFECV regression [views]")
-
-    # TODO: Empty texts are setting to length 1
-    # TODO: Check what urls have text and title to null or empty
-    # TODO: Remove stopwords from bag-of-words?
-    # TODO: Finish check the null and empty values of data in data/preprocessing.py
-    # TODO: Regex applied tp text and title in load_pages.py could be increasing the running time
-    # TODO: Some texts are coming empty and I'm filling them with 'empty text' in preprocessing.py. Same for title
-    # TODO: Change histograms by scatterplots
-    # TODO: Add wordcloud by percentiles
-    # TODO: Show message alerting if any of the variables have only null/zero values
+main()
